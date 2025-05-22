@@ -1,262 +1,331 @@
-# AI社内FAQ & 業務自動化サポートボット
+# スマートFAQボット (bedrock-knowledge-base-qa-bot)
 
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT) <!-- ライセンスに応じて変更してください -->
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
+[![Python Version](https://img.shields.io/badge/python-3.11-blue.svg)](https://www.python.org/downloads/)
+[![Framework: FastAPI](https://img.shields.io/badge/Framework-FastAPI-green.svg)](https://fastapi.tiangolo.com/)
+[![AWS Services](https://img.shields.io/badge/AWS-Bedrock%2C%20Lambda%2C%20APIGateway%2C%20S3%2C%20OpenSearch%2C%20Cognito-orange.svg)](https://aws.amazon.com/)
 
-Amazon Bedrockのナレッジベース機能を活用し、社内のよくある質問への自動応答と、定型的な業務プロセスの自動化サポートを実現するAIボットです。従業員の疑問解決時間の短縮と、業務効率の向上を目指します。
+**スマートFAQボット** は、Amazon Bedrockの強力なナレッジベースと生成AIモデルを活用し、FastAPIで構築され、AWS Lambda上で動作するインテリジェントな社内FAQ応答APIです。Amazon Cognitoによる認証機能を備え、セキュアに従業員の疑問を迅速に解決します。
 
 ## 概要 (Overview)
 
-このプロジェクトは、Amazon Bedrockの検索拡張生成 (RAG) アーキテクチャを基盤としています。
+このAPIは、社内情報へのアクセスを容易にし、従業員の生産性向上に貢献することを目的としています。
 
-1.  **AI社内FAQ機能:**
-    *   社内規定、ITサポート情報、福利厚生、その他各種マニュアルなどをデータソースとしてナレッジベースを構築。
-    *   従業員からの自然言語による質問に対し、関連情報を迅速に検索・抽出し、分かりやすい形で回答を生成します。
-2.  **業務自動化サポート機能:**
-    *   事前に定義された定型業務（例: 休暇申請の一次受付、会議室予約の確認、特定情報の社内システムからの取得など）について、ボットが対話を通じて必要な情報を収集し、後続処理のトリガーや一部自動実行をサポートします。
-    *   （もし具体的な自動化の仕組みがあれば追記。例: Lambda関数との連携、RPAツールへの指示など）
+**主な機能:**
 
-これにより、従業員は必要な情報を探す手間を削減でき、単純作業から解放されることで、より創造的な業務に集中できるようになります。
+1.  **AI搭載 FAQ API (`/faq/ask`):**
+    *   社内規定、ITサポート手順、福利厚生情報など、S3に格納されたドキュメント群をナレッジソースとします。
+    *   自然言語による質問に対し、Amazon Bedrockナレッジベース (Amazon OpenSearch Serverlessを利用) を検索し、選択した基盤モデル (例: Anthropic Claude 3 Sonnet) によって文脈に沿った分かりやすい回答を生成します。
+2.  **サポートチケット起票支援 API (`/support/create-ticket`):** (※アレンジ例)
+    *   FAQで解決しない問題について、ユーザーが自然言語で問題を説明すると、それを構造化し、社内のチケットシステム (例: Jira, Zendesk) へ起票するためのデータ形式に変換、または直接起票する支援を行います。
 
 ## 特徴 (Features)
 
-*   **社内FAQ機能:**
-    *   Amazon Bedrock ナレッジベースによる高精度な社内情報検索。
-    *   自然言語での問い合わせに対する即時応答。
-    *   多様なドキュメント形式（規定集、マニュアル、過去のQ&Aなど）に対応。
-*   **業務自動化サポート機能:**
-    *   対話形式での業務依頼受付。
-    *   [具体的な自動化サポートの例1: 例 休暇申請に必要な情報のヒアリングと申請システムへの仮登録]
-    *   [具体的な自動化サポートの例2: 例 ITヘルプデスクへの問い合わせ内容の一次切り分けとチケット起票サポート]
-    *   [その他、プロジェクト独自の自動化支援機能があれば記述]
-*   **共通:**
-    *   選択した基盤モデル (LLM) による人間が理解しやすい自然な対話。
-    *   Amazon S3をデータソースとして利用可能。
-    *   （もしあれば）Microsoft TeamsやSlackなどのチャットツールとの連携インターフェース。
+*   **サーバーレスアーキテクチャ:** AWS Lambdaによるスケーラブルでコスト効率の高い運用。
+*   **高速かつ効率的なAPI:** FastAPIによる非同期処理と高いパフォーマンス。
+*   **高精度なFAQ検索:** Amazon Bedrockナレッジベース (Amazon OpenSearch Serverless, `amazon.titan-embed-text-v1`埋め込みモデル) によるセマンティック検索と、最新LLMによる自然な回答生成。
+*   **セキュアなアクセス:** Amazon Cognitoによる認証・認可。
+*   **OpenAPI準拠:** 自動生成されるSwagger UIとReDocによるAPIドキュメント。
+*   **拡張性:** 新たなFAQソースや、シンプルな業務連携機能の追加が比較的容易。
 
 ## アーキテクチャ (Conceptual Architecture)
 
 ```mermaid
 graph TD
-    subgraph User Interface (例: 社内チャットボット, Webアプリ)
-        A[従業員]
+    subgraph "ユーザー/クライアントシステム"
+        Client[社内ポータル / チャットボット / etc.]
     end
 
-    A -- 質問 / 業務依頼 --> B{ボットインターフェース};
+    Client -- HTTPS (質問/業務指示) --> APIGW[Amazon API Gateway (HTTP API)];
+    APIGW -- Cognito Authorizer --> Lambda[AWS Lambda (FastAPI)];
 
-    subgraph "AI社内FAQ機能"
-        B -- FAQ関連の質問 --> C_FAQ[Amazon Bedrock];
-        C_FAQ -- 埋め込み変換 & クエリ --> D_FAQ[ナレッジベース (社内ドキュメント)];
-        D_FAQ -- 関連ドキュメントチャンク --> C_FAQ;
-        C_FAQ -- プロンプト (質問 + 関連情報) --> E_FAQ[基盤モデル (LLM)];
-        E_FAQ -- 生成された回答 --> C_FAQ;
-        C_FAQ -- 回答 --> B;
+    subgraph "FastAPI Application on Lambda (スマートFAQボット)"
+        Lambda -- "/faq/ask" --> FAQService[FAQ Service];
+        FAQService -- Bedrock KB Query --> BedrockKB[Amazon Bedrock Knowledge Base];
+        BedrockKB -- Search (OpenSearch Serverless) --> VectorStore[Amazon OpenSearch Serverless];
+        BedrockKB -- Generate Answer (e.g., Claude 3 Sonnet) --> FAQService;
+        FAQService -- Formatted Answer --> Lambda;
+
+        Lambda -- "/support/create-ticket" --> SupportTicketService[Support Ticket Service];
+        SupportTicketService -- Parse & Structure Request --> SupportTicketService;
+        SupportTicketService -- API Call (e.g., to Jira) --> ExternalTicketSystem[社内チケットシステム API];
+        ExternalTicketSystem -- Ticket Creation Result --> SupportTicketService;
+        SupportTicketService -- Result --> Lambda;
     end
 
-    subgraph "業務自動化サポート機能"
-        B -- 業務自動化の依頼 --> C_AUTO[処理振り分けロジック (例: Lambda)];
-        C_AUTO -- 必要な情報収集 / 確認 --> B;
-        C_AUTO -- タスク実行指示 --> F_AUTO[業務自動化エンジン (例: Lambda, Step Functions, RPA連携)];
-        F_AUTO -- 実行結果 / ステータス --> B;
-    end
+    S3Docs[社内ドキュメント (S3)] -- Ingestion --> BedrockKB;
 
-    B -- 回答 / 実行結果表示 --> A;
+    Lambda -- JSON Response --> APIGW;
+    APIGW -- Response --> Client;
 
-    G_DATA[社内ドキュメント (S3)] -- データ取り込み --> H_KB[ナレッジベース作成プロセス];
-    H_KB -- 埋め込みモデルでベクトル化 --> D_FAQ;
-
-    I_SYSTEM[各種社内システム API (オプション)] <--> F_AUTO;
-
-
-    subgraph AWS Cloud
-        C_FAQ
-        D_FAQ
-        E_FAQ
-        G_DATA
-        H_KB
-        C_AUTO
-        F_AUTO
-    end
+    style BedrockKB fill:#FF9900,stroke:#333,stroke-width:2px
+    style S3Docs fill:#232F3E,stroke:#FF9900,stroke-width:2px,color:#fff
+    style APIGW fill:#5A30B5,stroke:#333,stroke-width:2px,color:#fff
+    style Lambda fill:#F9A825,stroke:#333,stroke-width:2px,color:#fff
+    style VectorStore fill:#0073BB,stroke:#333,stroke-width:2px,color:#fff
 ```
-*（これは「AI社内FAQ & 業務自動化サポートボット」の一般的な構成例です。あなたの実装に合わせて詳細化・修正してください。特に業務自動化部分の連携先や処理フローを具体的にすると良いでしょう。）*
 
 ## 使用技術 (Technology Stack)
 
 *   **クラウドプラットフォーム:** AWS
 *   **主要AWSサービス:**
-    *   Amazon Bedrock (ナレッジベース、基盤モデル)
-    *   Amazon S3 (データソースストレージ)
-    *   [使用したベクトルストア: 例 Amazon OpenSearch Serverless]
-    *   AWS Lambda (業務ロジック、自動化タスク実行)
-    *   Amazon API Gateway (ボットのAPIエンドポイント)
-    *   IAM (権限管理)
-    *   [その他使用したAWSサービス: 例 Amazon Lex, AWS Step Functions]
-*   **プログラミング言語:** Python [バージョン]
-*   **主要ライブラリ:**
-    *   Boto3 (AWS SDK for Python)
-    *   [LangChain (もし使用していれば)]
-    *   [Flask / FastAPI (もしAPIを構築していれば)]
-    *   [Requests (外部API連携用)]
-    *   [その他、重要なライブラリがあれば記述]
-*   **埋め込みモデル:** [例: Amazon Titan Embeddings G1 - Text]
-*   **回答生成・対話モデル (LLM):** [例: Anthropic Claude 3 Sonnet, Anthropic Claude 3 Haiku]
-*   **[もしあれば] フロントエンド/UI:** [例: Streamlit, React, あるいはチャットプラットフォーム (Teams, Slack)]
-*   **[もしあれば] 業務自動化関連:** [例: RPAツール名, 特定の業務システムAPI]
+    *   **Amazon Bedrock:** ナレッジベース、基盤モデル (FAQ回答生成用: 例 `anthropic.claude-3-sonnet-20240229-v1:0`、埋め込み用: `amazon.titan-embed-text-v1`)
+    *   **AWS Lambda:** FastAPIアプリケーションホスティング
+    *   **Amazon API Gateway (HTTP API):** APIエンドポイント公開、Cognitoオーソライザー連携
+    *   **Amazon S3:** FAQドキュメントストレージ、ナレッジベースソース (例: `s3://your-faq-documents-bucket/`)
+    *   **Amazon OpenSearch Serverless:** Bedrockナレッジベース用ベクトルストア
+    *   **Amazon Cognito:** ユーザー認証・認可
+    *   **Amazon CloudWatch:** ロギング、モニタリング
+    *   **AWS IAM:** 権限管理
+*   **プログラミング言語:** Python 3.11
+*   **Webフレームワーク:** FastAPI
+*   **主要ライブラリ (アレンジ例):**
+    *   Boto3: AWS SDK for Python
+    *   Uvicorn: ASGIサーバー (ローカル開発用)
+    *   Pydantic (v2推奨): データバリデーションと設定管理
+    *   Mangum: AWS LambdaでFastAPIアプリケーションを実行するためのアダプタ
+    *   HTTPX: 高度なHTTPクライアント (外部API連携用、例: チケットシステム)
+    *   Loguru (推奨): シンプルで強力なロギング
+    *   `python-dotenv`: 環境変数管理 (ローカル開発用)
+    *   `aws-lambda-powertools`: AWS Lambda開発のベストプラクティス (ロギング、トレーシング、メトリクスなど)
+*   **CI/CD (推奨):** GitHub Actions, AWS CodePipeline (AWS SAMやServerless Frameworkと連携)
 
 ## セットアップと実行方法 (Setup & Usage)
 
 ### 1. 前提条件 (Prerequisites)
 
-*   AWSアカウントと適切なIAM権限。
-*   Python [バージョン] がインストールされていること。
-*   AWS CLI が設定済みであること (`aws configure`)。
-*   [その他、必要なツールやライブラリがあれば記述 (例: Docker, Node.js for frontend)]
+*   AWSアカウントと設定済みのAWS CLI (v2推奨)
+*   Python 3.11 および Poetry (推奨) または pip
+*   AWS SAM CLI (推奨、Lambdaデプロイ用) または Serverless Framework
+*   Git
 
 ### 2. リポジトリのクローン
 
 ```bash
-git clone https://github.com/[あなたのGitHubユーザー名]/[リポジトリ名].git
-cd [リポジトリ名]
+git clone https://github.com/[あなたのGitHubユーザー名]/bedrock-knowledge-base-qa-bot.git
+cd bedrock-knowledge-base-qa-bot
 ```
 
-### 3. 依存関係のインストール
+### 3. 依存関係のインストール (Poetryを使用する場合)
 
 ```bash
-pip install -r requirements.txt
-# もしフロントエンドがある場合
-# cd frontend && npm install (例)
+poetry install
 ```
+*(pip を使用する場合: プロジェクトルートに `requirements.txt` を作成し `pip install -r requirements.txt`)*
 
 ### 4. 設定 (Configuration)
 
-*   **AWS認証情報:** AWS SDK (Boto3) が認証情報を解決できるように設定してください。
-*   **ナレッジベース設定:**
-    *   S3バケット名 (FAQデータソース用)
-    *   Bedrock ナレッジベースID
-*   **業務自動化設定:**
-    *   [自動化対象の業務システムへの接続情報 (APIエンドポイント、認証情報など。これらはSecrets Manager等で管理することを推奨)]
-    *   [その他、業務ごとの設定ファイルやパラメータ]
-*   **設定ファイルの管理:**
-    *   `config.example.py` や `.env.example` を参考に、実際の設定ファイル (`config.py`, `.env`) を作成します。
-    *   **これらの実ファイルは `.gitignore` に追加し、リポジトリにコミットしないでください。**
+プロジェクトルートに `.env` ファイルを作成し、ローカル開発用の環境変数を設定します。Lambdaデプロイ時は、Lambda関数の環境変数として設定します。
+
+```env
+# .env (ローカル開発用サンプル)
+
+# AWS Configuration
+AWS_REGION="ap-northeast-1"
+BEDROCK_KNOWLEDGE_BASE_ID="YOUR_KNOWLEDGE_BASE_ID" # Bedrockコンソールで作成したナレッジベースID
+BEDROCK_MODEL_ID_FAQ="anthropic.claude-3-sonnet-20240229-v1:0" # FAQ回答生成に使用するモデルID
+# BEDROCK_MODEL_ID_EMBEDDING="amazon.titan-embed-text-v1" # これはナレッジベース作成時に指定
+
+# External System Endpoints (サポートチケット起票支援API用 - アレンジ例)
+# TICKET_SYSTEM_API_ENDPOINT="https://your-company.jira.com/rest/api/2/issue"
+# TICKET_SYSTEM_API_KEY="YOUR_TICKET_SYSTEM_API_KEY_OR_TOKEN"
+
+# Logging
+LOG_LEVEL="INFO"
+POWERTOOLS_SERVICE_NAME="SmartFAQBot" # aws-lambda-powertools用
+```
 
 ### 5. データソースの準備 (FAQ機能)
 
-1.  社内FAQの元となるドキュメント (社内規定、マニュアル等) を準備します。
-2.  これらのファイルを、設定したS3バケットの特定のプレフィックスにアップロードします。
-3.  Amazon Bedrockコンソールでナレッジベースを作成し、このS3バケット/プレフィックスをデータソースとして指定し、同期を実行します。
+1.  FAQの元となるドキュメント (PDF, TXT, DOCX, HTML, MDなど) を準備します。
+2.  これらのドキュメントをAWS S3バケット (例: `s3://your-faq-documents-bucket/docs/`) にアップロードします。
+3.  Amazon Bedrockコンソールでナレッジベースを作成します。
+    *   データソースとして上記S3バケットを指定します。
+    *   埋め込みモデルには `amazon.titan-embed-text-v1` を選択します。
+    *   ベクトルストアには `Amazon OpenSearch Serverless` を選択し、設定します。
+4.  作成したナレッジベースのIDを `.env` ファイルの `BEDROCK_KNOWLEDGE_BASE_ID` (ローカル用) およびLambdaの環境変数に設定します。
 
-### 6. 業務自動化タスクの定義 (業務自動化サポート機能)
+### 6. APIサーバーのローカル起動 (開発・テスト用)
 
-*   [自動化したい業務プロセスをどのように定義・設定するかの手順を記述。設定ファイル、DB、あるいはコード内で定義するなど。]
-*   [例: `automation_tasks.json` にタスク名、必要なパラメータ、実行するLambda関数名などを定義する]
+```bash
+poetry run uvicorn app.main:app --reload --port 8000
+```
+APIは `http://localhost:8000` で利用可能になります。Swagger UIは `http://localhost:8000/docs`、ReDocは `http://localhost:8000/redoc` でアクセスできます。
+ローカルではCognito認証はスキップされるか、モック認証を実装する必要があります。
 
-### 7. 実行方法
+### 7. デプロイ (AWS Lambda + API Gateway + Cognito)
 
-*   **バックエンドAPIの起動 (もしあれば):**
-    ```bash
-    # 例: uvicorn main:app --reload (FastAPIの場合)
-    python app.py (Flaskの場合)
+AWS SAM CLIまたはServerless Frameworkの使用を推奨します。
+
+**AWS SAM を使用する場合 (例):**
+
+1.  `template.yaml` (SAMテンプレート) をプロジェクトに合わせて記述します。Cognitoユーザープール、API Gateway、Lambda関数、IAMロールなどを定義します。
+2.  ビルド: `sam build --use-container`
+3.  デプロイ: `sam deploy --guided`
+
+デプロイ後、API GatewayのエンドポイントURLが発行されます。Cognitoユーザープールでユーザーを作成し、払い出されたIDトークンをAuthorizationヘッダー (Bearerトークン) に含めてAPIを呼び出します。
+
+## APIエンドポイント詳細
+
+### 認証
+
+API GatewayでCognitoオーソライザーを設定します。クライアントはCognitoから取得したIDトークンを `Authorization` ヘッダーにBearerトークンとして付与する必要があります。
+
+```
+Authorization: Bearer <YourCognitoIdToken>
+```
+
+### 7.1 FAQ問い合わせ
+
+*   **エンドポイント:** `POST /faq/ask`
+*   **説明:** 自然言語で質問を送信し、ナレッジベースから回答を取得します。
+*   **リクエストボディ (JSON):**
+    ```json
+    {
+      "question": "今年の夏季休暇はいつからいつまでですか？",
+      "session_id": "optional_session_identifier_for_context" // オプション: 会話履歴管理用
+    }
     ```
-*   **フロントエンドの起動 (もしあれば):**
-    ```bash
-    # 例: cd frontend && npm start
-    streamlit run ui.py
+*   **レスポンス (JSON):**
+    *   **成功時 (200 OK):**
+        ```json
+        {
+          "question": "今年の夏季休暇はいつからいつまでですか？",
+          "answer": "今年の夏季休暇は、8月13日（火）から8月16日（金）までの4日間です。詳細は社内ポータルの「就業規則第XX条」をご確認ください。",
+          "source_chunks": [
+            {
+              "document_uri": "s3://your-faq-documents-bucket/HR/syugyou_kisoku_2024.pdf",
+              "score": 0.89,
+              "text": "夏季休暇: 毎年8月13日から16日までの4日間とする。"
+            }
+          ],
+          "request_id": "lambda-request-id" // LambdaのリクエストID
+        }
+        ```
+    *   **エラー時 (400 Bad Request, 401 Unauthorized, 403 Forbidden, 500 Internal Server Errorなど):**
+        ```json
+        {
+          "detail": "エラーメッセージ" // FastAPIのデフォルトエラー形式
+        }
+        ```
+
+### 7.2 サポートチケット起票支援 (※アレンジ例)
+
+*   **エンドポイント:** `POST /support/create-ticket`
+*   **説明:** FAQで解決しない問題について、ユーザーが記述した内容を基にサポートチケットの起票を支援します。
+*   **リクエストボディ (JSON):**
+    ```json
+    {
+      "problem_description": "PCの動作が非常に遅く、特定のアプリケーションが頻繁にフリーズします。再起動しても改善しませんでした。",
+      "category": "IT_SUPPORT_HARDWARE", // オプション: 事前に定義されたカテゴリ
+      "priority": "HIGH" // オプション: 緊急度
+    }
     ```
-*   **CLIでの利用 (もしあれば):**
-    ```bash
-    python cli_bot.py --ask "夏季休暇について教えて"
-    python cli_bot.py --do "会議室予約" --params '{"date":"YYYY-MM-DD", "time":"HH:MM", "attendees":5}'
-    ```
+*   **レスポンス (JSON):**
+    *   **成功時 (201 Created - チケットシステムへ直接起票した場合):**
+        ```json
+        {
+          "status": "ticket_created",
+          "message": "サポートチケットが正常に起票されました。",
+          "ticket_id": "JIRA-12345", // チケットシステム側のID
+          "details": {
+            "summary": "PC動作不良およびアプリケーションフリーズ", // LLMが生成または構造化した要約
+            "description_provided": "PCの動作が非常に遅く、特定のアプリケーションが頻繁にフリーズします。再起動しても改善しませんでした。"
+          },
+          "request_id": "lambda-request-id"
+        }
+        ```
+    *   **成功時 (200 OK - 起票用データを返却する場合):**
+        ```json
+        {
+          "status": "data_prepared_for_ticket",
+          "message": "サポートチケット起票用のデータ準備が完了しました。以下の内容で手動起票してください。",
+          "ticket_data": { // チケットシステムに合わせた構造
+            "project_key": "SUPPORT",
+            "issue_type": "Bug",
+            "summary": "PC動作不良およびアプリケーションフリーズ",
+            "description": "ユーザー報告:\nPCの動作が非常に遅く、特定のアプリケーションが頻繁にフリーズします。再起動しても改善しませんでした。\n\n(システム追記: 関連FAQ検索結果なし)",
+            "priority_name": "High"
+          },
+          "request_id": "lambda-request-id"
+        }
+        ```
+    *   **エラー時:**
+        ```json
+        {
+          "detail": "チケット起票支援に失敗しました。理由: [具体的なエラー理由]"
+        }
+        ```
 
-## スクリーンショット / デモ (Screenshots / Demo)
-
-**社内FAQの例:**
-```
-あなた: 「在宅勤務の申請方法を教えてください。」
-AIボット: 「在宅勤務を申請するには、社内ポータルの「各種申請」メニューから「在宅勤務申請フォーム」を選択し、必要事項を記入の上、所属長に提出してください。承認フローは通常2営業日です。詳細は「在宅勤務規定 ver3.2」のP.5をご参照ください。」
-```
-
-**業務自動化サポートの例:**
-```
-あなた: 「ITサポートに問い合わせたいんだけど。」
-AIボット: 「承知いたしました。どのような内容でお困りでしょうか？（例: PCが起動しない、パスワードを忘れた、特定のソフトウェアの使い方がわからない など）」
-あなた: 「Outlookでメールが送信できない。」
-AIボット: 「Outlookでメールが送信できないのですね。エラーメッセージは表示されていますか？また、いつ頃からその事象が発生していますか？これらの情報をITサポートデスクへ連携します。」
-（裏側でチケット起票や担当者への通知が行われるイメージ）
-```
-[もしあれば、実際の動作画面のスクリーンショットやGIFを挿入]
-
-## コード構成 (Code Structure) - (オプション)
+## コード構成 (アレンジ例: Lambda + FastAPI)
 
 ```
 .
-├── backend/                 # APIサーバー、ボットロジック (Python)
-│   ├── app.py               # メインアプリケーション (例: FastAPI, Flask)
-│   ├── bedrock_agent/       # Bedrockナレッジベース連携
-│   │   └── faq_handler.py
-│   ├── automation_handler/  # 業務自動化処理のハンドラ
-│   │   └── tasks/           # 各自動化タスクのモジュール
-│   └── config.py
-├── frontend/                # (もしあれば) UI部分 (例: React, Vue, Streamlit)
-│   └── src/
-├── data_preparation/        # (もしあれば) FAQデータ準備スクリプト
-├── lambda_functions/        # (もしあれば) 業務自動化に使われるLambda関数群
-├── tests/                   # テストコード
-├── requirements.txt         # Python依存関係
-├── .env.example             # 環境変数サンプル
+├── app/                     # FastAPIアプリケーションのメインディレクトリ
+│   ├── __init__.py
+│   ├── main.py              # FastAPIアプリケーションインスタンス、Mangumハンドラ、ルーター読み込み
+│   ├── routers/             # APIルーター (エンドポイント定義)
+│   │   ├── __init__.py
+│   │   └── faq.py
+│   │   └── (support.py)     # (サポートチケット起票支援API用 - アレンジ例)
+│   ├── services/            # ビジネスロジック、外部サービス連携
+│   │   ├── __init__.py
+│   │   └── bedrock_service.py
+│   │   └── (ticket_service.py) # (サポートチケット起票支援API用 - アレンジ例)
+│   ├── schemas/             # Pydanticモデル (リクエスト/レスポンススキーマ)
+│   │   ├── __init__.py
+│   │   └── faq.py
+│   │   └── (support.py)     # (サポートチケット起票支援API用 - アレンジ例)
+│   ├── core/                # 設定、共通ユーティリティ
+│   │   ├── __init__.py
+│   │   └── config.py        # 環境変数読み込み、設定クラス
+│   └── utils/               # 汎用ユーティリティ関数
+│       ├── __init__.py
+│       └── logger.py        # LoguruまたはPowertools Loggerの設定
+├── tests/                   # ユニットテスト、統合テスト
+│   ├── __init__.py
+│   ├── conftest.py
+│   └── routers/
+│   └── services/
+├── .env.example             # 環境変数ファイルのサンプル (ローカル開発用)
 ├── .gitignore
-└── README.md
+├── poetry.lock
+├── pyproject.toml           # Poetryプロジェクト定義
+├── template.yaml            # (推奨: AWS SAMテンプレート)
+├── README.md                # このファイル
+└── (scripts/)               # (デプロイ用スクリプトなど)
 ```
-*(プロジェクトの実際の構成に合わせて調整してください)*
 
 ## コストに関する注意 (Cost Considerations)
 
-このプロジェクトでは、以下のAWSサービスを利用するため、利用状況に応じてコストが発生します。
+*   **Amazon Bedrock:** ナレッジベースのストレージ、モデルの推論 (FAQ回答生成、埋め込み生成) に対して料金が発生します。
+*   **AWS Lambda:** リクエスト数、実行時間、メモリ割り当てに応じて料金が発生します。
+*   **Amazon API Gateway:** リクエスト数、データ転送量に応じて料金が発生します。
+*   **Amazon S3:** ドキュメントストレージ、ログ出力先として料金が発生します。
+*   **Amazon OpenSearch Serverless:** インデックス作成ユニット、検索およびクエリユニット、データストレージに応じて料金が発生します。
+*   **Amazon Cognito:** 月間アクティブユーザー数 (MAU) に応じて料金が発生する場合があります (無料利用枠あり)。
+*   **CloudWatch:** ログ保存量、メトリクス、アラームに応じて料金が発生します。
 
-*   **Amazon Bedrock:** ナレッジベースの利用、基盤モデルの推論。
-*   **Amazon S3:** データソースのストレージ。
-*   **[ベクトルストア名]:** ベクトルデータの保存とクエリ。
-*   **AWS Lambda, API Gateway等:** 業務自動化ロジックの実行、APIリクエスト処理。
-*   **[その他利用サービス]:** データ転送など。
-
-必ずAWSの最新の料金情報を確認し、コストをモニタリングしてください。
+コスト最適化のため、適切なモデルの選択、Lambdaのメモリ割り当ての最適化、不要なログ出力の抑制などを検討してください。AWS Cost Explorerで定期的にコストを確認することを推奨します。
 
 ## 今後の展望 (Future Work / ToDo)
 
-*   **FAQ機能:**
-    *   対応ドキュメントの拡充と定期的な更新プロセスの自動化。
-    *   ユーザーからのフィードバックを学習し、回答精度を継続的に向上。
-*   **業務自動化サポート機能:**
-    *   対応可能な業務自動化タスクの種類を増やす。
-    *   より複雑な業務フローへの対応 (Step Functionsの活用など)。
-    *   他システムとのAPI連携の強化。
-*   **共通:**
-    *   多言語対応。
-    *   ユーザーごとのパーソナライズ機能。
-    *   より高度な分析機能（よくある質問、業務自動化の利用状況など）。
+*   **対話型FAQの強化:**
+    *   Bedrock Agentsを活用したマルチターン会話への対応。
+    *   ユーザーフィードバック機能 (回答の評価とナレッジベース改善サイクル)。
+*   **業務自動化機能の拡充 (アレンジ例):**
+    *   チケットシステムとのより高度な連携 (ステータス確認、更新など)。
+    *   FAQ回答から直接関連ドキュメントへのリンクを提示するだけでなく、特定のアクション（例: ソフトウェア申請ページの表示）を実行する機能。
+*   **運用・監視の強化:**
+    *   `aws-lambda-powertools` を活用した構造化ログ、カスタムメトリクス、分散トレーシングの本格導入。
+*   **テストカバレッジの向上。**
 
 ## コントリビューション (Contributing)
 
-[コントリビューションに関するガイドラインがあれば記述]
+このプロジェクトへのコントリビューションを歓迎します！バグ報告、機能提案、プルリクエストはGitHubのIssuesやPull Requestsからお願いします。
 
 ## ライセンス (License)
 
-このプロジェクトは [あなたの選択したライセンス名、例: MIT License] のもとで公開されています。詳細は `LICENSE` ファイルをご覧ください。
-
----
+このプロジェクトは [MIT License](LICENSE) の下で公開されています。
 ```
 
-**主な修正点:**
-
-*   **タイトルと概要:** 「AI社内FAQ & 業務自動化サポートボット」であることを明確にしました。
-*   **特徴:** FAQ機能と業務自動化サポート機能に分けて、それぞれの具体的なメリットを記述できるようにプレースホルダーを設けました。
-*   **アーキテクチャ図:** FAQ部分と業務自動化部分を概念的に分離し、業務自動化がLambdaや外部システムと連携する可能性を示唆しました。より具体的にあなたの実装に合わせてください。
-*   **使用技術:** 業務自動化に関連しそうなAWSサービス（Lambda, API Gateway, Step Functions）や、一般的なライブラリの例を追加しました。
-*   **セットアップと実行方法:** FAQデータの準備と、業務自動化タスクの定義について触れるセクションを追加しました。
-*   **スクリーンショット/デモ:** FAQと業務自動化のそれぞれの対話例を記述しました。
-*   **コード構成:** `backend`, `frontend`, `lambda_functions` など、より具体的な構成例を示しました。
-*   **今後の展望:** FAQと業務自動化それぞれについて、考えられる拡張ポイントを例示しました。
-
-この修正版READMEをベースに、あなたのプロジェクトの具体的な詳細（どのような業務を自動化するのか、どのようなUIなのか、使用している特定のツールやAPIなど）を追記・修正していくことで、より魅力的なものになるはずです。
-
-もし、さらに具体的に「ここの業務自動化部分はこういう仕組みなんだけど、どう書けばいい？」といったご質問があれば、お気軽にお知らせください。
